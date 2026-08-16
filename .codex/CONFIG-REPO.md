@@ -15,6 +15,15 @@ git --git-dir="$HOME/.codex-config.git" --work-tree="$HOME" add -u
 git --git-dir="$HOME/.codex-config.git" --work-tree="$HOME" commit
 ```
 
+首次关联远端仓库时：
+
+```bash
+git --git-dir="$HOME/.codex-config.git" remote add origin <你的仓库地址>
+git --git-dir="$HOME/.codex-config.git" push -u origin main
+```
+
+当前只创建了本地仓库，没有自动创建或绑定远端仓库。
+
 添加新的全局 Skill 或 Agent 时，应显式添加：
 
 ```bash
