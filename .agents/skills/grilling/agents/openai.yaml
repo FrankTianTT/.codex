@@ -1,0 +1,6 @@
+interface:
+  display_name: "方案盘问"
+  short_description: "逐题压力测试方案并梳理目标、边界、依赖与关键决策分支"
+  default_prompt: "使用 $grilling 逐题盘问这个方案，只讨论决策，不执行。"
+policy:
+  allow_implicit_invocation: false

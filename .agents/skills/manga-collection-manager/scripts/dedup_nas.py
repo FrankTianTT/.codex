@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
-"""去重脚本 — 按审计报告精确删除重复文件。先 dry-run 确认，再执行。"""
-import os, sys, re
+"""去重脚本 — 默认预览；--execute 时把重复文件移入可恢复隔离目录。"""
+import os
+import re
+import shutil
+import sys
+from datetime import datetime
 
 BASE = "/Volumes/personal_folder/Private/Manga/单行本"
 
@@ -336,6 +340,11 @@ def list_files(author_dir):
 
 def main():
     dry_run = "--execute" not in sys.argv
+    quarantine_root = os.path.join(
+        BASE,
+        ".codex-dedup-quarantine",
+        datetime.now().strftime("%Y%m%d-%H%M%S"),
+    )
     if dry_run:
         print("=" * 70)
         print("🔍 DRY RUN 模式 — 只检查不删除")
@@ -398,18 +407,25 @@ def main():
                     size_mb = 0
                 total_size += size_mb
                 total_delete += 1
-                print(f"   🗑️  删除: {f} ({size_mb:.0f} MB)")
+                print(f"   🗑️  隔离: {f} ({size_mb:.0f} MB)")
                 if not dry_run:
                     try:
-                        os.remove(fpath)
-                        print(f"       ✅ 已删除")
+                        relative = os.path.relpath(fpath, BASE)
+                        quarantine_path = os.path.join(quarantine_root, relative)
+                        os.makedirs(os.path.dirname(quarantine_path), exist_ok=True)
+                        if os.path.exists(quarantine_path):
+                            raise OSError(f"隔离目标已存在: {quarantine_path}")
+                        shutil.move(fpath, quarantine_path)
+                        print(f"       ✅ 已移入 {quarantine_path}")
                     except OSError as e:
-                        errors.append(f"       ❌ 删除失败: {e}")
+                        errors.append(f"       ❌ 隔离失败: {e}")
 
     print(f"\n{'=' * 70}")
     print(f"{'🔍 DRY RUN 汇总' if dry_run else '✅ 实际执行汇总'}")
-    print(f"   删除文件数: {total_delete}")
-    print(f"   回收空间: {total_size/1024:.1f} GB")
+    print(f"   隔离候选数: {total_delete}")
+    print(f"   可回收空间: {total_size/1024:.1f} GB")
+    if not dry_run and total_delete:
+        print(f"   恢复目录: {quarantine_root}")
     if errors:
         print(f"   ⚠️ 问题: {len(errors)}")
         for e in errors[:10]:

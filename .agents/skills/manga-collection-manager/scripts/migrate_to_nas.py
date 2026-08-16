@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
-"""Migrate manga v2 — with long filename handling and resume support."""
-import os, re, shutil, sys
+"""迁移漫画 ZIP；默认只预览，显式 --execute 才复制并删除源文件。"""
+import argparse
+import hashlib
+import os
+import re
+import shutil
+import zipfile
 from collections import defaultdict
 
 SRC = "/Volumes/ACASIS"
@@ -157,24 +162,44 @@ def safe_fname(fname, max_bytes=MAX_FNAME_BYTES):
     return new_base + ext
 
 
+def file_digest(path, chunk_size=1024 * 1024):
+    """计算文件 SHA-256，用于跨卷复制后的完整性验证。"""
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        while chunk := handle.read(chunk_size):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def safe_move(src, dst_dir, fname):
-    """Move file across devices with long filename handling."""
+    """跨卷复制，校验大小与 SHA-256 后才删除源文件。"""
     safe_name = safe_fname(fname)
     dest = os.path.join(dst_dir, safe_name)
 
     if os.path.exists(dest):
-        # Verify file integrity by comparing size
         try:
-            if os.path.getsize(dest) == os.path.getsize(src):
+            if (
+                os.path.getsize(dest) == os.path.getsize(src)
+                and file_digest(dest) == file_digest(src)
+            ):
                 return False, "already_exists"
         except OSError:
             pass
-        # Size differs or unreadable — overwrite with temp+rename to be safe
+        return False, "destination_conflict"
 
     tmp = dest + ".tmp"
     try:
         shutil.copy2(src, tmp)
-        os.rename(tmp, dest)  # atomic on same filesystem
+        if os.path.getsize(tmp) != os.path.getsize(src):
+            raise OSError("复制后文件大小不一致")
+        if file_digest(tmp) != file_digest(src):
+            raise OSError("复制后 SHA-256 不一致")
+        if src.lower().endswith(".zip"):
+            with zipfile.ZipFile(tmp) as archive:
+                bad_member = archive.testzip()
+            if bad_member:
+                raise OSError(f"ZIP 完整性检查失败: {bad_member}")
+        os.replace(tmp, dest)
         os.remove(src)
         return True, safe_name
     except OSError as e:
@@ -187,7 +212,32 @@ def safe_move(src, dst_dir, fname):
         return False, str(e)
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--src", default=SRC, help="来源卷或目录")
+    parser.add_argument("--dst-authors", default=DST_AUTHORS, help="作者目标目录")
+    parser.add_argument("--dst-magazine", default=DST_MAGAZINE, help="杂志目标目录")
+    parser.add_argument("--execute", action="store_true", help="执行复制和源文件删除；默认只预览")
+    parser.add_argument("--dryrun", action="store_true", help="兼容旧命令；默认行为本来就是预览")
+    return parser.parse_args()
+
+
 def main():
+    global SRC, DST_AUTHORS, DST_MAGAZINE
+    args = parse_args()
+    SRC = os.path.abspath(os.path.expanduser(args.src))
+    DST_AUTHORS = os.path.abspath(os.path.expanduser(args.dst_authors))
+    DST_MAGAZINE = os.path.abspath(os.path.expanduser(args.dst_magazine))
+
+    for label, path in (
+        ("来源", SRC),
+        ("作者目标", DST_AUTHORS),
+        ("杂志目标", DST_MAGAZINE),
+    ):
+        if not os.path.isdir(path):
+            print(f"❌ {label}目录不存在或卷未挂载: {path}")
+            return 2
+
     existing_dirs = set()
     for d in os.listdir(DST_AUTHORS):
         if os.path.isdir(os.path.join(DST_AUTHORS, d)) and not d.startswith('.'):
@@ -248,6 +298,24 @@ def main():
     print(f"⏭️ 跳过:     {len(skipped)} 部")
     print()
 
+    if not args.execute:
+        print("📋 预览模式；需要迁移并删除源文件时显式传入 --execute。")
+        for label, groups in (
+            ("已有作者", to_existing),
+            ("新作者", to_new),
+            ("杂志", to_magazine),
+        ):
+            shown = 0
+            for destination, files in sorted(groups.items()):
+                for _, fname in files:
+                    print(f"  {label}: {fname} -> {destination}/")
+                    shown += 1
+                    if shown >= 10:
+                        break
+                if shown >= 10:
+                    break
+        return 0
+
     errors = []
 
     # Move existing author files
@@ -303,7 +371,8 @@ def main():
         print(f"⚠️ 错误: {len(errors)} 部")
         for fname, reason in errors[:10]:
             print(f"   ⚠️ {fname[:80]}... — {reason}")
+    return 1 if errors else 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -1,6 +1,6 @@
 ---
 name: tdd
-description: Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions "red-green-refactor", or wants integration tests.
+description: Test-driven development. Use only when the user explicitly asks for TDD, test-first development, or a red-green-refactor loop. Do not trigger merely because a task includes adding or running tests.
 ---
 
 # Test-Driven Development
@@ -48,15 +48,14 @@ When exploring the codebase, read `CONTEXT.md` (if it exists) so that test names
 
 Before writing any code:
 
-- [ ] Confirm with user what interface changes are needed
-- [ ] Confirm with user which behaviors to test (prioritize)
-- [ ] Identify opportunities for deep modules (small interface, deep implementation) — run the `/codebase-design` skill for the vocabulary and the testability checks
+- [ ] Inspect the current public interface and existing test conventions
+- [ ] Identify the smallest observable behavior that proves the requested change
 - [ ] List the behaviors to test (not implementation steps)
-- [ ] Get user approval on the plan
+- [ ] Ask the user only when a missing product decision would materially change the interface or acceptance behavior
 
-Ask: "What should the public interface look like? Which behaviors are most important to test?"
+If the user already specified the interface and expected behavior, begin the first RED step without asking them to repeat or approve it.
 
-**You can't test everything.** Confirm with the user exactly which behaviors matter most. Focus testing effort on critical paths and complex logic, not every possible edge case.
+**You can't test everything.** Focus testing effort on critical paths and complex logic, not every possible edge case.
 
 ### 2. Tracer Bullet
 

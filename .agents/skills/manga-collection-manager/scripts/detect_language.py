@@ -2,10 +2,8 @@
 """
 批量 OCR 语言检测 — 判断漫画/同人志是中文、日文还是英文。
 
-策略: 单遍采样 5 张图片，OCR 后按字符统计判断：
-  - CJK >= 20 → 中文（日文漫画汉字不会这么多而无假名）
-  - CJK < 20 且假名/(CJK+假名) > 30% → 日文
-  - 否则有 CJK → 中文 / 无 CJK → low_text
+策略: 单遍采样 5 张图片，OCR 后按字符统计判断。先检查假名占比，
+避免把包含大量汉字的日文误判为中文；只有假名很少时才按 CJK 判断中文。
 
 缓存: 图片级 OCR 缓存（.ocr_cache.json），重跑秒级完成。
 
@@ -58,27 +56,43 @@ def save_cache():
     with _cache_lock:
         CACHE_FILE.write_text(json.dumps(_ocr_cache, ensure_ascii=False))
 
+def cache_key(img_path: str) -> str:
+    stat = os.stat(img_path)
+    return f"{img_path}|{stat.st_size}|{stat.st_mtime_ns}"
+
+
 def get_cached_ocr(img_path: str) -> str | None:
     with _cache_lock:
-        return _ocr_cache.get(img_path)
+        return _ocr_cache.get(cache_key(img_path))
 
 def set_cached_ocr(img_path: str, text: str):
     with _cache_lock:
-        _ocr_cache[img_path] = text
+        _ocr_cache[cache_key(img_path)] = text
 
 
 # ── 字符分析 (复用 local-ocr 的 char_analysis 模块) ─────────────────────
 
 import sys as _sys
 _sys.path.insert(0, os.path.expanduser("~/Applications/local-ocr/scripts"))
-from char_analysis import is_kana, is_cjk, is_latin, analyze_text, detect_language as _detect_language
+from char_analysis import is_kana, is_cjk, is_latin, analyze_text
 
 
 def detect_language(texts: list[str]) -> tuple[str, float, str]:
-    """Thin wrapper: adds sample text to char_analysis.detect_language output."""
+    """优先按假名占比判断日文，再按 CJK/拉丁字符判断。"""
     combined = " ".join(t for t in texts if t.strip())
     sample = combined[:200].replace("\n", " ")
-    lang, conf = _detect_language(texts)
+    kana, cjk, latin = analyze_text(combined)
+    cjk_total = kana + cjk
+    kana_ratio = kana / cjk_total if cjk_total else 0.0
+
+    if kana >= 5 and kana_ratio >= 0.12:
+        lang, conf = "ja", min(0.99, 0.65 + kana_ratio)
+    elif cjk >= 5:
+        lang, conf = "zh", min(0.99, 0.65 + cjk / max(cjk_total, 1) * 0.3)
+    elif latin >= 10:
+        lang, conf = "en", min(0.95, 0.5 + latin / max(len(combined), 1))
+    else:
+        lang, conf = "low_text", 0.0
     return lang, conf, sample
 
 
@@ -95,6 +109,8 @@ def ocr_image(image_path: str) -> str:
             [OCR_TOOL, image_path, "cjk", "--raw"],
             capture_output=True, text=True, timeout=15,
         )
+        if result.returncode != 0:
+            return ""
         lines = []
         for line in result.stdout.split("\n"):
             line = line.strip()
@@ -102,9 +118,10 @@ def ocr_image(image_path: str) -> str:
                 lines.append(line)
         text = "\n".join(lines)
     except Exception:
-        text = ""
+        return ""
 
-    set_cached_ocr(image_path, text)
+    if text:
+        set_cached_ocr(image_path, text)
     return text
 
 
@@ -113,9 +130,9 @@ def ocr_image(image_path: str) -> str:
 def find_leaf_dirs(base: Path) -> list[Path]:
     leaf_dirs = []
     for dirpath, dirnames, filenames in os.walk(base):
-        if any(skip in dirpath for skip in [".claude", ".git", "__pycache__"]):
+        if any(skip in dirpath for skip in [".codex", ".git", "__pycache__"]):
             continue
-        if any(Path(f).suffix.lower() in IMAGE_EXTS for f in filenames):
+        if any(Path(f).suffix.lower() in IMAGE_EXTS for f in filenames) and not dirnames:
             leaf_dirs.append(Path(dirpath))
     return leaf_dirs
 

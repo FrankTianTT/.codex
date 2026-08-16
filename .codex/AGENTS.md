@@ -1,65 +1,40 @@
-# Codex 全局记忆
+# Codex 全局规则
 
 ## 维护语言
-本文件的后续所有更新、修改、新增内容均使用**中文**进行维护。
 
-## 配置维护原则
-- 只维护 Codex 配置，不再兼容或同步 Claude Code
-- 禁止通过 CC Switch、通用中转目录或跨客户端软链接维护重复副本
-- 全局规则维护在 `~/.codex/AGENTS.md`
-- 全局自定义 Skill 维护在 `~/.agents/skills/`
-- 全局自定义 Agent 维护在 `~/.codex/agents/`
-- 项目级 Skill 与 Agent 随项目仓库维护
-- Codex 会话、认证、缓存、自动记忆数据库和插件缓存均不纳入版本控制
+本文件及全局 Codex 配置的新增、修改均使用中文维护。
 
-## MCP 抓取工具
-所有 URL 抓取必须使用 `mcp__fetch__fetch`，**禁止**使用原生的 `WebFetch` 工具。
-**原因：** 用户明确偏好 MCP fetch 工具，它的限制可能更少。
+## 配置维护
+
+- 只维护 Codex，不再兼容或同步 Claude Code。
+- 不使用 CC Switch、中转目录或跨客户端软链接维护重复副本。
+- 全局规则放在 `~/.codex/AGENTS.md`，全局自定义 Skill 放在 `~/.agents/skills/`，全局自定义 Agent 放在 `~/.codex/agents/`。
+- 项目专用规则、Skill 和 Agent 随项目仓库维护，不复制到全局目录。
+- 会话、认证、缓存、自动记忆数据库和插件缓存不纳入版本控制。
+
+## 联网与检索
+
+- 使用 Codex 当前提供的网页搜索、浏览器或任务对应的专用连接器；不绑定某个历史 MCP 工具名。
+- 用户要求最新信息、检索、核验或来源时，实际联网验证，并优先采用权威的一手来源。
+- 已有专用连接器或站点工具能更可靠地完成任务时，可优先使用；工具不可用时回退到 Codex 网页搜索。
 
 ## 运行环境
-本项目运行在以下两种操作系统上，所有配置均需兼容两者：
 
-| 系统 | 包管理器 |
-|------|----------|
-| **macOS**（Apple Silicon） | Homebrew |
-| **Ubuntu** | apt |
+- 全局配置需兼容 macOS（Apple Silicon）与 Ubuntu；执行前根据当前系统选择工具和路径。
+- Python 环境与依赖统一使用 `uv`，禁止 `pip3 install` 和 `python3 -m venv` 污染系统环境。
+- 一次性 Python 依赖使用 `uv run --with <包名> python3 <脚本>`。
+- 安装方式、中国镜像与代理细节见 `~/.codex/reference/environment.md`。
 
-## Python：始终使用 uv
-1. **禁止使用系统 `pip3 install`** — 会污染全局 Python 环境，引发冲突
-2. **禁止使用 `python3 -m venv`** — 所有环境管理统一使用 `uv`
-3. 一次性脚本的正确用法：`uv run --with <包名> python3 <脚本>`
-4. `uv` 安装方式因系统而异：
-   - **macOS**：`brew install uv`，路径 `/opt/homebrew/bin/uv`
-   - **Ubuntu**：通过官方脚本 `curl -LsSf https://astral.sh/uv/install.sh | sh`，路径 `~/.cargo/bin/uv`
-   - 安装后 `uv` 应在 `PATH` 中，直接使用即可
-5. 通过系统包管理器安装的工具可以放心使用（macOS: Homebrew 装的 cmake、ffmpeg、opencc、uv 等；Ubuntu: apt 装的 cmake、ffmpeg 等，uv 通过官方脚本安装）；系统级 pip 安装的 Python 包不安全
+## API 密钥
 
-## 包管理器与镜像源（中国加速）
-用户在中国，使用中科大镜像加速软件下载。
+- 绝对禁止在源码、配置或文档中硬编码 API 密钥。
+- 读取顺序为：系统 keyring → 环境变量 → 明确报错并引导设置。
+- Python keyring 通过 `uv run --with keyring` 调用；模板见 `~/.codex/reference/keyring-pattern.py`。
 
-### macOS — Homebrew
-关键环境变量：
-```
-HOMEBREW_BOTTLE_DOMAIN=https://mirrors.ustc.edu.cn/homebrew-bottles
-HOMEBREW_API_DOMAIN=https://mirrors.ustc.edu.cn/homebrew-bottles/api
-```
-禁止使用 HomebrewCN 或任何第三方安装脚本（供应链风险）。
+## Skill 维护
 
-### Ubuntu — apt
-使用中科大 apt 镜像源，`sources.list` 中 `deb` 行指向 `https://mirrors.ustc.edu.cn/ubuntu/`。
-禁止使用未知来源的 PPA 或第三方安装脚本（供应链风险）。
-
-## 网络代理
-用户在中国，访问 GitHub 等境外网站需要代理。
-- HTTP/HTTPS 代理地址：`http://127.0.0.1:7897`
-- 命令行工具使用方式：`export https_proxy=http://127.0.0.1:7897`
-- 当 npx/npm/git 操作遇到连接错误时，建议使用此代理
-
-## API 密钥管理（铁律）
-
-**🚫 绝对禁止在任何文件中硬编码 API 密钥。** 密钥写入源码 → 泄露到 git 仓库和 AI 上下文。
-
-必须使用 Python **keyring** 库（macOS 钥匙串 / Linux gnome-keyring），通过 `uv run --with keyring` 调用。
-密钥读取优先级：**keyring → 环境变量 → 报错引导设置**。
-
-完整代码模板与交互式设置指南见：`~/.codex/reference/keyring-pattern.py`
+- 全局 Skill 只保留跨项目且 Codex 默认能力无法稳定替代的工作流；项目专用知识留在项目仓库。
+- 每个 Skill 聚焦一个任务，触发描述写清适用范围和排除项，避免与系统 Skill、插件 Skill 或项目 Skill 抢占同类请求。
+- 不保留 Claude Code 专用元数据、已失效依赖或仅作命令索引的冗余 Skill。
+- 维护采用闭环：列清单 → 用代表性请求独立消费 → 记录失败 → 修改或退役 → 校验与复测 → 提交版本控制。
+- 涉及删除、覆盖、迁移源文件的脚本必须默认预览；只有显式 `--execute` 后才能执行，并在删除源文件前验证输出完整性。

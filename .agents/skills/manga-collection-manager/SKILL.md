@@ -26,6 +26,15 @@ description: |
 
 无论来源如何，最终输出统一为：**按画师组织的 zip 压缩包**，仅保留中文汉化、JPG/PNG 图片格式。
 
+## 安全边界
+
+- 默认只建立清单和预览，不执行删除、覆盖或迁移。
+- 只有用户明确确认本次计划后，才可对已展示的准确路径使用 `--execute`。
+- 执行前确认来源卷和目标卷都已挂载；路径缺失时立即停止，禁止自动创建卷根目录。
+- 目标同名或截断后重名时停止并报告，不覆盖现有文件。
+- 删除源文件前必须完成压缩包 CRC/条目验证，或跨卷复制后的大小、SHA-256 与 ZIP 完整性验证。
+- 先保存操作清单和结果日志；高风险批处理优先在临时副本上做小样本验证。
+
 ## 馆藏标准
 
 ### 目标目录结构
@@ -44,13 +53,13 @@ description: |
 ### 文件格式
 
 - **IRON RULE**: 只保留 `.jpg` / `.jpeg` / `.png`
-- 删除：`.pdf` `.gif` `.webp` `.bmp` `.txt` `.url` `.html` `Thumbs.db` `._*`（Apple Double）
+- 清理候选：`.pdf` `.gif` `.webp` `.bmp` `.txt` `.url` `.html` `Thumbs.db` `._*`（Apple Double）
 
 ```bash
-find /path/to/dir -name '*.pdf' -delete
-find /path/to/dir -type f ! -name '*.jpg' ! -name '*.jpeg' ! -name '*.png' \
-  ! -name '*.JPG' ! -name '*.JPEG' ! -name '*.PNG' -delete
-find /path/to/dir -name '._*' -type f -exec rm -f {} \; 2>/dev/null
+# 仅生成候选清单；检查清单后再通过受控脚本处理
+find /path/to/dir -type f \( -name '*.pdf' -o -name '*.gif' -o -name '*.webp' \
+  -o -name '*.bmp' -o -name '*.txt' -o -name '*.url' -o -name '*.html' \
+  -o -name 'Thumbs.db' -o -name '._*' \) -print
 ```
 
 ### 压缩约定
@@ -58,8 +67,8 @@ find /path/to/dir -name '._*' -type f -exec rm -f {} \; 2>/dev/null
 每个叶子目录（直接含图片）压缩为同名 `.zip`，删除原目录。exFAT 上几千个小文件的簇大小浪费严重，压缩后大幅节省空间。
 
 ```bash
-uv run python3 scripts/compress.py --dryrun   # 预览
-uv run python3 scripts/compress.py            # 执行
+uv run python3 scripts/compress.py             # 默认预览
+uv run python3 scripts/compress.py --execute   # 明确确认后执行
 ```
 
 ## 语言分类
@@ -104,7 +113,7 @@ uv run python3 scripts/detect_language.py --dryrun   # 预览采样
 uv run python3 scripts/detect_language.py --workers 16   # 全量检测
 ```
 
-核心算法：CJK ≥ 20 字符 → 中文（日文漫画不可能有这么多汉字而没有等比例的假名）。详细算法见 `scripts/detect_language.py` docstring。
+核心算法：先检查假名数量及其在 CJK+假名中的占比；假名信号不足时才按汉字数量判断中文。详细算法见 `scripts/detect_language.py` docstring。
 
 **重要更正**：目录名中的假名不是日文信号——汉化作品保留原日文标题。旧启发式 "目录名含假名 → 日文" ~100% 错误。
 
@@ -192,15 +201,16 @@ uv run python3 scripts/detect_language.py --dryrun
 uv run python3 scripts/detect_language.py --workers 16
 
 # 压缩叶子目录
-uv run python3 scripts/compress.py --dryrun
 uv run python3 scripts/compress.py
+uv run python3 scripts/compress.py --execute
 
 # 去重
 uv run python3 scripts/dedup_nas.py
 uv run python3 scripts/dedup_nas.py --execute
 
 # ibm5100 解压后迁移到 NAS
-uv run python3 scripts/migrate_to_nas.py
+uv run python3 scripts/migrate_to_nas.py              # 默认预览
+uv run python3 scripts/migrate_to_nas.py --execute    # 明确确认后执行
 
 # AList 下载
 uv run --with requests python3 scripts/alist_download.py

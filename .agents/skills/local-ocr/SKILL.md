@@ -1,11 +1,17 @@
 ---
 name: local-ocr
-description: Local image/PDF OCR using Apple Vision (macOS native) with Core Image preprocessing. Three primary tasks — (1) single image OCR, (2) full PDF to Markdown with paragraph merging and auto header/footer removal, (3) manga/comic language detection via CJK character analysis. Entirely local, free, private — no API calls. When you need to OCR an image, extract text from a PDF, convert a PDF to markdown, recognize text in screenshots, or detect language of manga/comic images, use this skill. For complex image understanding (diagram interpretation, design critique, formula→LaTeX), use image-reader (cloud VLM) instead. Triggers: OCR, extract text, PDF to text/markdown, read PDF, convert scanned PDF, image recognition, local OCR, language detection, Chinese vs Japanese.
+description: macOS-only local OCR using Apple Vision for scanned PDFs, screenshots, document images, batch extraction, and private/offline text recognition. Use when the task is OCR rather than semantic image analysis and the current host is macOS. Do not use on Ubuntu, for text-native PDFs, or for diagrams/design critique; use Codex native vision or the PDF plugin instead.
 ---
 
 # Local OCR — Image & PDF Text Recognition
 
 Entirely local OCR pipeline. Uses a self-maintained Swift tool (`~/Applications/local-ocr/ocr_vision`) wrapping Apple Vision with Core Image preprocessing. No Shortcuts dependency. No API costs. No data leaving the machine.
+
+## Preflight
+
+1. Confirm `uname -s` returns `Darwin`; otherwise do not use this Skill.
+2. Confirm `~/Applications/local-ocr/ocr_vision` and the referenced scripts exist and are executable.
+3. Run one supplied image as a smoke test before a batch. If Apple Vision returns `nilError` or another framework error, stop and use Codex native vision/PDF tooling; do not cache the empty result or continue the batch.
 
 ## Quick Reference
 
@@ -14,8 +20,8 @@ Entirely local OCR pipeline. Uses a self-maintained Swift tool (`~/Applications/
 | OCR single image | `ocr_vision` | `~/Applications/local-ocr/ocr_vision <img> [en\|zh\|ja\|cjk\|auto] [--raw\|--enhance]` |
 | Detect PDF type | `pdf_detect.sh` | `~/Applications/local-ocr/scripts/pdf_detect.sh <pdf>` |
 | PDF → Markdown | `pdf_to_md.sh` | `~/Applications/local-ocr/scripts/pdf_to_md.sh <pdf> [outdir] [--lang=zh] [--workers=N]` |
-| Clean OCR text | `txt_to_md.py` | `python3 ~/Applications/local-ocr/scripts/txt_to_md.py <in> <out> [--lang=zh] [--config cfg.yaml]` |
-| Detect text language | `char_analysis.py` | `python3 ~/Applications/local-ocr/scripts/char_analysis.py <text>` |
+| Clean OCR text | `txt_to_md.py` | `uv run python3 ~/Applications/local-ocr/scripts/txt_to_md.py <in> <out> [--lang=zh] [--config cfg.yaml]` |
+| Detect text language | `char_analysis.py` | `uv run python3 ~/Applications/local-ocr/scripts/char_analysis.py <text>` |
 | Batch manga lang detect | `manga-collection-manager` | Use `detect_language.py` in that skill |
 | Text cleanup (zh) | `opencc` | `opencc -c t2s` |
 
@@ -24,11 +30,11 @@ Entirely local OCR pipeline. Uses a self-maintained Swift tool (`~/Applications/
 | Tool | Strengths | Use for |
 |------|-----------|---------|
 | **local-ocr** (this skill) | Local, free, private, fast, concurrent | Bulk text extraction: PDFs, document scans, manga batches, screenshots |
-| **image-reader** (cloud VLM) | Semantic understanding, reasoning | Diagram interpretation, design critique, formula→LaTeX, error diagnosis, table extraction |
+| **Codex 原生视觉 / 项目视觉工具** | Semantic understanding, reasoning | Diagram interpretation, design critique, formula→LaTeX, error diagnosis, table extraction |
 
-**Rule of thumb**: If you just need the text → local-ocr. If you need to *understand* the image → image-reader.
+**Rule of thumb**: If you just need private/offline text extraction on macOS → local-ocr. If you need to understand the image → Codex 原生视觉或项目视觉工具。
 
-For single images that need both text and structure: OCR first with `ocr_vision`, then if the raw text needs structural interpretation, pass to image-reader `--mode extract`.
+For single images that need both text and structure: OCR first with `ocr_vision`, then let Codex interpret the extracted text together with the original image.
 
 ---
 
@@ -122,7 +128,7 @@ pdftotext -f 20 -l 20 "file.pdf" - | head -20
 If the PDF is already extracted to raw text, you can run the post-processor directly:
 
 ```bash
-python3 ~/Applications/local-ocr/scripts/txt_to_md.py raw_text.txt output.md --lang=zh
+uv run python3 ~/Applications/local-ocr/scripts/txt_to_md.py raw_text.txt output.md --lang=zh
 ```
 
 **What it does**:
@@ -159,13 +165,13 @@ merge:
 ```
 
 ```bash
-python3 ~/Applications/local-ocr/scripts/txt_to_md.py in.txt out.md --config book.yaml
+uv run python3 ~/Applications/local-ocr/scripts/txt_to_md.py in.txt out.md --config book.yaml
 ```
 
 Disable auto header detection if it produces false positives:
 
 ```bash
-python3 ~/Applications/local-ocr/scripts/txt_to_md.py in.txt out.md --no-auto-detect-headers
+uv run python3 ~/Applications/local-ocr/scripts/txt_to_md.py in.txt out.md --no-auto-detect-headers
 ```
 
 ### Performance
@@ -207,7 +213,7 @@ Determine whether manga/doujin images contain Chinese, Japanese, or English text
 ~/Applications/local-ocr/ocr_vision page01.jpg cjk --raw
 
 # Detect language from the OCR output
-~/Applications/local-ocr/ocr_vision page01.jpg cjk --raw | python3 ~/Applications/local-ocr/scripts/char_analysis.py
+~/Applications/local-ocr/ocr_vision page01.jpg cjk --raw | uv run python3 ~/Applications/local-ocr/scripts/char_analysis.py
 ```
 
 ### The Algorithm

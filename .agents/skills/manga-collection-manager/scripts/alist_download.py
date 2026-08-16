@@ -136,6 +136,18 @@ def mode_alist(dry_run=True):
         dest_path = os.path.join(dest_dir, safe_fname(fname))
         tmp_path = dest_path + ".tmp"
 
+        if os.path.exists(dest_path):
+            if os.path.getsize(dest_path) == rf['size']:
+                print(" ⏭️ 目标已存在且大小一致")
+                continue
+            print(" ❌ 目标文件名冲突，拒绝覆盖")
+            failed.append((author_dir, rf, "目标文件名冲突"))
+            continue
+        if os.path.exists(tmp_path):
+            print(" ❌ 发现残留临时文件，拒绝覆盖")
+            failed.append((author_dir, rf, "残留临时文件"))
+            continue
+
         success = False
         for attempt in range(5):
             try:
@@ -159,7 +171,7 @@ def mode_alist(dry_run=True):
 
                 actual_size = os.path.getsize(tmp_path)
                 if actual_size == rf['size']:
-                    os.rename(tmp_path, dest_path)
+                    os.replace(tmp_path, dest_path)
                     print(f" ✅ {actual_size/1024**2:.0f}MB")
                     downloaded += 1
                     total_bytes += actual_size

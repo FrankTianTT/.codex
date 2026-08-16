@@ -1,0 +1,6 @@
+interface:
+  display_name: "第三方图片提取"
+  short_description: "显式调用第三方视觉模型完成图片理解、对照与结构化内容提取"
+  default_prompt: "使用 $image-reader 对这张图片做第三方视觉模型分析，并先确认外发风险。"
+policy:
+  allow_implicit_invocation: false
