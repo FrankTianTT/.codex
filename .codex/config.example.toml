@@ -1,0 +1,39 @@
+# Codex 用户偏好模板
+#
+# 实际配置位于 ~/.codex/config.toml。该文件仅保存适合跨设备复用的用户意图；
+# MCP 启动参数、应用内部路径、运行时版本、项目信任状态等由各设备单独生成。
+
+service_tier = "priority"
+model = "gpt-5.6-sol"
+model_reasoning_effort = "high"
+
+[desktop]
+followUpQueueMode = "queue"
+
+[plugins."browser@openai-bundled"]
+enabled = true
+
+[plugins."visualize@openai-bundled"]
+enabled = true
+
+[plugins."sites@openai-bundled"]
+enabled = true
+
+[plugins."documents@openai-primary-runtime"]
+enabled = true
+
+[plugins."pdf@openai-primary-runtime"]
+enabled = true
+
+[plugins."spreadsheets@openai-primary-runtime"]
+enabled = true
+
+[plugins."presentations@openai-primary-runtime"]
+enabled = true
+
+[plugins."template-creator@openai-primary-runtime"]
+enabled = true
+
+[features]
+js_repl = false
+memories = true
