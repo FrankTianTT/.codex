@@ -1,6 +1,6 @@
 ---
 name: opencli-usage
-description: OpenCLI 的轻量路由说明。仅当用户明确要求使用 OpenCLI，项目 Skill 明确依赖 OpenCLI，或需要开发、调试 OpenCLI adapter 时使用。普通网页搜索使用 Codex 网页搜索，普通网页交互使用 Codex Browser 或专用连接器。
+description: OpenCLI 的轻量路由说明。当用户明确指定网站或平台且当前 registry 有合适的只读 adapter、项目 Skill 依赖 OpenCLI、用户点名 OpenCLI，或需要开发和调试 adapter 时使用。普通开放网页搜索使用 Codex 网页搜索，普通网页交互使用 Codex Browser 或专用连接器。
 ---
 
 # OpenCLI 路由
@@ -11,7 +11,9 @@ description: OpenCLI 的轻量路由说明。仅当用户明确要求使用 Open
 
 - 普通互联网搜索、最新信息与来源核验：使用 Codex 网页搜索。
 - 普通网页浏览、点击、表单和登录态交互：使用 Codex Browser 或专用连接器。
-- 用户点名 OpenCLI、项目 Skill 指定站点 adapter，或需要开发/修复 adapter：使用 OpenCLI。
+- 明确站点已有只读 adapter，且任务需要站内搜索、结构化列表、评论、指标或登录态数据：主动使用 OpenCLI。
+- 用户点名 OpenCLI、项目 Skill 指定 adapter，或需要开发/修复 adapter：使用 OpenCLI。
+- 发布、评论、点赞、关注、删除、上传、下单等写操作：即使 adapter 可用，也先取得用户明确授权。
 
 ## 最小发现流程
 
