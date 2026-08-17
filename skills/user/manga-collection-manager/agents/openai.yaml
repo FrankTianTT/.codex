@@ -3,4 +3,4 @@ interface:
   short_description: "以默认预览和可恢复操作安全维护个人 NAS 漫画馆藏内容"
   default_prompt: "使用 $manga-collection-manager 先生成馆藏维护预览，不执行任何修改。"
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true
