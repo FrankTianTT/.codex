@@ -1,0 +1,18 @@
+# 默认忽略 Codex 运行时数据，只显式纳管可维护配置。
+/*
+
+!/.gitignore
+!/AGENTS.md
+!/CONFIG-REPO.md
+!/config.example.toml
+
+!/reference/
+!/reference/**
+
+!/agents/
+!/agents/**
+
+!/skills/
+/skills/*
+!/skills/user/
+!/skills/user/**

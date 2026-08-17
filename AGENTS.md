@@ -8,7 +8,8 @@
 
 - 只维护 Codex，不再兼容或同步 Claude Code。
 - 不使用 CC Switch、中转目录或跨客户端软链接维护重复副本。
-- 全局规则放在 `~/.codex/AGENTS.md`，全局自定义 Skill 放在 `~/.agents/skills/`，全局自定义 Agent 放在 `~/.codex/agents/`。
+- 全局规则放在 `~/.codex/AGENTS.md`，全局自定义 Skill 的唯一真实版本放在 `~/.codex/skills/user/`，全局自定义 Agent 放在 `~/.codex/agents/`。
+- `~/.agents/skills` 仅作为 Codex 官方用户级 Skill 发现入口，软链接到 `~/.codex/skills/user/`；不在链接两端维护重复副本。
 - 项目专用规则、Skill 和 Agent 随项目仓库维护，不复制到全局目录。
 - 会话、认证、缓存、自动记忆数据库和插件缓存不纳入版本控制。
 
