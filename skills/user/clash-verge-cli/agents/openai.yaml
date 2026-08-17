@@ -1,0 +1,7 @@
+interface:
+  display_name: "Clash Verge CLI"
+  short_description: "通过 CLI 诊断网络、测速并安全更新 Clash Verge"
+  default_prompt: "使用 $clash-verge-cli 检查本机代理状态并诊断当前网络访问问题。"
+
+policy:
+  allow_implicit_invocation: true

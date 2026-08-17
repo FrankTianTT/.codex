@@ -33,6 +33,11 @@
 - 一次性 Python 依赖使用 `uv run --with <包名> python3 <脚本>`。
 - 安装方式、中国镜像与代理细节见 `~/.codex/reference/environment.md`。
 
+## Clash Verge CLI 运维
+
+- 本机网络受限、境外依赖下载失败，或用户提到 Clash、Mihomo、代理、梯子、VPN、节点、订阅、测速、TUN/系统代理时，加载全局 Skill `clash-verge-cli`；不要因 Clash Verge 是 GUI 应用就默认必须操作 GUI。
+- 只读诊断可主动执行；切换节点/mode、修改 TUN/系统代理、更新订阅、替换配置或重载核心必须取得明确授权。详细流程与敏感信息边界由该 Skill 维护，不在本文件保留重复副本。
+
 ## API 密钥
 
 - 绝对禁止在源码、配置或文档中硬编码 API 密钥。
