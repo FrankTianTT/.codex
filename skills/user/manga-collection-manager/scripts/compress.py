@@ -4,7 +4,6 @@
 import argparse
 import os
 import shutil
-import subprocess
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -25,28 +24,32 @@ def find_leaf_dirs(base: Path) -> list[Path]:
     return leaf_dirs
 
 
-def source_file_count(dirpath: Path) -> int:
-    """统计会进入压缩包的普通文件数。"""
-    count = 0
-    for _, dirnames, filenames in os.walk(dirpath):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
-        count += len(filenames)
-    return count
+def source_files(dirpath: Path) -> list[Path]:
+    """列出目录内所有普通文件；符号链接单独交给安全检查拒绝。"""
+    files: list[Path] = []
+    for root, dirnames, filenames in os.walk(dirpath):
+        dirnames[:] = [name for name in dirnames if name not in SKIP_DIRS]
+        files.extend(Path(root) / name for name in filenames)
+    return sorted(files)
 
 
-def validate_archive(zip_path: Path, expected_files: int) -> tuple[bool, str]:
-    """检查 ZIP 可完整读取，且文件条目数与源目录一致。"""
+def validate_archive(zip_path: Path, expected: dict[str, int]) -> tuple[bool, str]:
+    """检查 ZIP CRC、条目名和未压缩大小是否与源目录一致。"""
     try:
         with zipfile.ZipFile(zip_path) as archive:
             bad_member = archive.testzip()
             if bad_member:
                 return False, f"压缩包损坏: {bad_member}"
-            actual_files = sum(not item.is_dir() for item in archive.infolist())
+            actual = {
+                item.filename: item.file_size
+                for item in archive.infolist()
+                if not item.is_dir()
+            }
     except (OSError, zipfile.BadZipFile) as exc:
         return False, f"无法验证压缩包: {exc}"
 
-    if actual_files != expected_files:
-        return False, f"文件数不一致: 源目录 {expected_files}，压缩包 {actual_files}"
+    if actual != expected:
+        return False, "压缩包条目或文件大小与源目录不一致"
     return True, "ok"
 
 
@@ -59,28 +62,33 @@ def compress_and_remove(dirpath: Path, base_dir: Path) -> tuple[str, bool, str]:
     if zip_path.exists():
         return rel, False, "zip 已存在，跳过"
 
-    expected_files = source_file_count(dirpath)
-    if expected_files == 0:
+    files = source_files(dirpath)
+    if not files:
         return rel, False, "源目录没有可压缩文件"
+
+    blocked = [
+        path.relative_to(dirpath)
+        for path in files
+        if path.is_symlink() or path.suffix.lower() not in IMAGE_EXTS
+    ]
+    if blocked:
+        sample = ", ".join(str(path) for path in blocked[:5])
+        suffix = f" 等 {len(blocked)} 个" if len(blocked) > 5 else ""
+        return rel, False, f"含非图片文件或符号链接，拒绝压缩并删除源目录: {sample}{suffix}"
+
+    expected = {
+        str(Path(dirpath.name) / path.relative_to(dirpath)): path.stat().st_size
+        for path in files
+    }
 
     try:
         if temp_zip.exists():
             temp_zip.unlink()
-        result = subprocess.run(
-            [
-                "zip", "-r", "-q", str(temp_zip), dirpath.name,
-                "-x", "*/.git/*", "*/.codex/*", "*/__pycache__/*",
-            ],
-            cwd=str(dirpath.parent),
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-        if result.returncode != 0:
-            temp_zip.unlink(missing_ok=True)
-            return rel, False, f"zip 失败: {result.stderr.strip()}"
+        with zipfile.ZipFile(temp_zip, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as archive:
+            for path in files:
+                archive.write(path, arcname=Path(dirpath.name) / path.relative_to(dirpath))
 
-        valid, message = validate_archive(temp_zip, expected_files)
+        valid, message = validate_archive(temp_zip, expected)
         if not valid:
             temp_zip.unlink(missing_ok=True)
             return rel, False, message
@@ -88,9 +96,6 @@ def compress_and_remove(dirpath: Path, base_dir: Path) -> tuple[str, bool, str]:
         temp_zip.replace(zip_path)
         shutil.rmtree(dirpath)
         return rel, True, "✅"
-    except subprocess.TimeoutExpired:
-        temp_zip.unlink(missing_ok=True)
-        return rel, False, "超时"
     except Exception as exc:
         temp_zip.unlink(missing_ok=True)
         return rel, False, str(exc)

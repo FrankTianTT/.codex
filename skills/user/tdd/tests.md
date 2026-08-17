@@ -1,61 +1,36 @@
-# Good and Bad Tests
+# 行为测试示例
 
-## Good Tests
-
-**Integration-style**: Test through real interfaces, not mocks of internal parts.
+## 推荐
 
 ```typescript
-// GOOD: Tests observable behavior
-test("user can checkout with valid cart", async () => {
+test("有效购物车可以完成结算", async () => {
   const cart = createCart();
   cart.add(product);
+
   const result = await checkout(cart, paymentMethod);
+
   expect(result.status).toBe("confirmed");
+  expect(result.orderId).toBeDefined();
 });
 ```
 
-Characteristics:
+这个测试通过公开入口描述一个完整行为。两个断言共同证明同一个结算结果，不必机械拆成两个测试。
 
-- Tests behavior users/callers care about
-- Uses public API only
-- Survives internal refactors
-- Describes WHAT, not HOW
-- One logical assertion per test
-
-## Bad Tests
-
-**Implementation-detail tests**: Coupled to internal structure.
+## 避免
 
 ```typescript
-// BAD: Tests implementation details
-test("checkout calls paymentService.process", async () => {
-  const mockPayment = jest.mock(paymentService);
-  await checkout(cart, payment);
-  expect(mockPayment.process).toHaveBeenCalledWith(cart.total);
+test("checkout 调用 paymentService.process 一次", async () => {
+  const process = jest.spyOn(paymentService, "process");
+  await checkout(cart, paymentMethod);
+  expect(process).toHaveBeenCalledTimes(1);
 });
 ```
 
-Red flags:
+如果调用次数不是外部契约，这个测试会把内部组织方式锁死。重构没有改变结算行为时，它也可能无意义地失败。
 
-- Mocking internal collaborators
-- Testing private methods
-- Asserting on call counts/order
-- Test breaks when refactoring without behavior change
-- Test name describes HOW not WHAT
-- Verifying through external means instead of interface
+## 判断问题
 
-```typescript
-// BAD: Bypasses interface to verify
-test("createUser saves to database", async () => {
-  await createUser({ name: "Alice" });
-  const row = await db.query("SELECT * FROM users WHERE name = ?", ["Alice"]);
-  expect(row).toBeDefined();
-});
-
-// GOOD: Verifies through interface
-test("createUser makes user retrievable", async () => {
-  const user = await createUser({ name: "Alice" });
-  const retrieved = await getUser(user.id);
-  expect(retrieved.name).toBe("Alice");
-});
-```
+- 测试名是否描述调用者能观察到的能力？
+- 改写内部实现但保持行为不变时，测试是否仍应通过？
+- 失败信息能否指出哪个行为被破坏？
+- 当前层级是否是验证该风险最便宜、最稳定的位置？

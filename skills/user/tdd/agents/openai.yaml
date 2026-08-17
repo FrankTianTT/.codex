@@ -1,0 +1,6 @@
+interface:
+  display_name: "测试驱动开发"
+  short_description: "按小步红灯、绿灯、重构循环实现可观察行为"
+  default_prompt: "使用 $tdd 按测试先行方式实现这个需求，每次只推进一个行为切片。"
+policy:
+  allow_implicit_invocation: false

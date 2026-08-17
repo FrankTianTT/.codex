@@ -141,4 +141,4 @@ uv run --with requests python3 scripts/alist_download.py --crossref --execute
 | 下载到一半 403/401 | 签名 URL 过期 | 重新调用 `/api/fs/get` |
 | 文件名过长 | macOS APFS 限制 | `safe_fname()` 截断到 200 字节 |
 | 文件大小不符 | 下载中断 | `os.path.getsize()` vs `item['size']` 比较 |
-| robots.txt Disallow | MCP fetch 拒绝 | 用 Python `requests` 直接调 API |
+| robots.txt 限制页面抓取 | 普通网页抓取不可用 | 在遵守站点规则的前提下使用公开 AList API |

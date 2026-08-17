@@ -1,10 +1,10 @@
-# Refactor Candidates
+# 重构检查表
 
-After TDD cycle, look for:
+只在测试全绿时重构：
 
-- **Duplication** → Extract function/class
-- **Long methods** → Break into private helpers (keep tests on public interface)
-- **Shallow modules** → Combine or deepen
-- **Feature envy** → Move logic to where data lives
-- **Primitive obsession** → Introduce value objects
-- **Existing code** the new code reveals as problematic
+- 消除真实重复，而不是抽象偶然相似；
+- 把复杂度藏到边界清楚的深模块后面；
+- 改善命名、错误处理和数据边界；
+- 发现长函数时先判断是否存在可独立命名的职责；
+- 新代码暴露旧设计问题时，控制修改范围并保持行为不变；
+- 每个小步骤后运行相关测试，最后运行完整回归。

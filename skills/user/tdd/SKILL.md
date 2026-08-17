@@ -1,107 +1,54 @@
 ---
 name: tdd
-description: Test-driven development. Use only when the user explicitly asks for TDD, test-first development, or a red-green-refactor loop. Do not trigger merely because a task includes adding or running tests.
+description: 执行测试驱动开发，以小步的红灯、绿灯、重构循环实现功能。只有用户明确要求 TDD、测试先行、test-first 或 red-green-refactor 时使用；普通修复、增加测试或运行测试不要隐式触发。
 ---
 
-# Test-Driven Development
+# 测试驱动开发
 
-## Philosophy
+以可观察行为为单位推进，每次只完成一个最小红绿循环。测试优先验证调用者关心的结果，避免与内部实现结构耦合。
 
-**Core principle**: Tests should verify behavior through public interfaces, not implementation details. Code can change entirely; tests shouldn't.
+## 开始前
 
-**Good tests** are integration-style: they exercise real code paths through public APIs. They describe _what_ the system does, not _how_ it does it. A good test reads like a specification - "user can checkout with valid cart" tells you exactly what capability exists. These tests survive refactors because they don't care about internal structure.
+1. 阅读目标代码、现有测试约定、项目规则和相关 ADR。
+2. 找出最小的可观察行为和公开契约。
+3. 列出行为清单，不要一次性写完全部测试。
+4. 只有缺失的产品决策会改变接口或验收行为时才询问用户；已经明确的需求直接开始第一个红灯。
 
-**Bad tests** are coupled to implementation. They mock internal collaborators, test private methods, or verify through external means (like querying a database directly instead of using the interface). The warning sign: your test breaks when you refactor, but behavior hasn't changed. If you rename an internal function and tests fail, those tests were testing implementation, not behavior.
+## 循环
 
-See [tests.md](tests.md) for examples and [mocking.md](mocking.md) for mocking guidelines.
+对每个行为依次执行：
 
-## Anti-Pattern: Horizontal Slices
-
-**DO NOT write all tests first, then all implementation.** This is "horizontal slicing" - treating RED as "write all tests" and GREEN as "write all code."
-
-This produces **crap tests**:
-
-- Tests written in bulk test _imagined_ behavior, not _actual_ behavior
-- You end up testing the _shape_ of things (data structures, function signatures) rather than user-facing behavior
-- Tests become insensitive to real changes - they pass when behavior breaks, fail when behavior is fine
-- You outrun your headlights, committing to test structure before understanding the implementation
-
-**Correct approach**: Vertical slices via tracer bullets. One test → one implementation → repeat. Each test responds to what you learned from the previous cycle. Because you just wrote the code, you know exactly what behavior matters and how to verify it.
-
-```
-WRONG (horizontal):
-  RED:   test1, test2, test3, test4, test5
-  GREEN: impl1, impl2, impl3, impl4, impl5
-
-RIGHT (vertical):
-  RED→GREEN: test1→impl1
-  RED→GREEN: test2→impl2
-  RED→GREEN: test3→impl3
-  ...
+```text
+RED      写一个能证明该行为的测试，并确认它因预期原因失败
+GREEN    写最少实现让当前测试通过
+REFACTOR 在全绿状态下整理实现和测试，再运行相关测试
 ```
 
-## Workflow
+规则：
 
-### 1. Planning
+- 一次只推进一个行为切片。
+- 先确认红灯确实来自缺失行为，而不是语法、夹具或环境错误。
+- 绿灯阶段不提前实现后续行为。
+- 重构时保持外部行为不变；每一步后运行测试。
+- 优先从公开接口验证行为，但允许对纯算法、协议边界和难以经济覆盖的错误分支使用窄单元测试。
+- 一个测试可以有多个断言，只要它们共同描述同一个行为结果。
 
-When exploring the codebase, read `CONTEXT.md` (if it exists) so that test names and interface vocabulary match the project's domain language, and respect ADRs in the area you're touching.
+## 测试边界
 
-Before writing any code:
+- 优先真实代码路径和集成式测试，避免模拟自己的内部模块。
+- 在支付、邮件、第三方 API、时间、随机性等系统边界使用替身。
+- 数据库和文件系统是否替换，取决于速度、隔离性和失败诊断成本。
+- 测试因内部重命名而失败、但外部行为没变时，检查是否耦合了实现细节。
 
-- [ ] Inspect the current public interface and existing test conventions
-- [ ] Identify the smallest observable behavior that proves the requested change
-- [ ] List the behaviors to test (not implementation steps)
-- [ ] Ask the user only when a missing product decision would materially change the interface or acceptance behavior
+需要具体例子时读取：
 
-If the user already specified the interface and expected behavior, begin the first RED step without asking them to repeat or approve it.
+- [tests.md](tests.md)：行为测试和实现细节测试的对比。
+- [mocking.md](mocking.md)：系统边界与模拟原则。
+- [refactoring.md](refactoring.md)：全绿后的重构检查表。
 
-**You can't test everything.** Focus testing effort on critical paths and complex logic, not every possible edge case.
+## 完成条件
 
-### 2. Tracer Bullet
-
-Write ONE test that confirms ONE thing about the system:
-
-```
-RED:   Write test for first behavior → test fails
-GREEN: Write minimal code to pass → test passes
-```
-
-This is your tracer bullet - proves the path works end-to-end.
-
-### 3. Incremental Loop
-
-For each remaining behavior:
-
-```
-RED:   Write next test → fails
-GREEN: Minimal code to pass → passes
-```
-
-Rules:
-
-- One test at a time
-- Only enough code to pass current test
-- Don't anticipate future tests
-- Keep tests focused on observable behavior
-
-### 4. Refactor
-
-After all tests pass, look for [refactor candidates](refactoring.md):
-
-- [ ] Extract duplication
-- [ ] Deepen modules (move complexity behind simple interfaces)
-- [ ] Apply SOLID principles where natural
-- [ ] Consider what new code reveals about existing code
-- [ ] Run tests after each refactor step
-
-**Never refactor while RED.** Get to GREEN first.
-
-## Checklist Per Cycle
-
-```
-[ ] Test describes behavior, not implementation
-[ ] Test uses public interface only
-[ ] Test would survive internal refactor
-[ ] Code is minimal for this test
-[ ] No speculative features added
-```
+- 每个计划行为都有对应证据。
+- 所有相关测试通过。
+- 没有为未来需求添加推测性实现。
+- 报告执行过的测试、未覆盖边界和任何环境限制。

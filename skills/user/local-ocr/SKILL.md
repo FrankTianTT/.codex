@@ -1,336 +1,78 @@
 ---
 name: local-ocr
-description: macOS-only local OCR using Apple Vision for scanned PDFs, screenshots, document images, batch extraction, and private/offline text recognition. Use when the task is OCR rather than semantic image analysis and the current host is macOS. Do not use on Ubuntu, for text-native PDFs, or for diagrams/design critique; use Codex native vision or the PDF plugin instead.
+description: 在 macOS 上使用 Apple Vision 本地识别扫描 PDF、截图和文档图片中的文字，支持中英日文、批量 OCR 与私密离线处理。任务核心是文字提取且当前主机为 macOS 时使用；Ubuntu、文本型 PDF、图表理解、界面审查或一般图片语义分析不要触发，改用 Codex 原生视觉或 PDF 插件。
 ---
 
-# Local OCR — Image & PDF Text Recognition
+# 本地 OCR
 
-Entirely local OCR pipeline. Uses a self-maintained Swift tool (`~/Applications/local-ocr/ocr_vision`) wrapping Apple Vision with Core Image preprocessing. No Shortcuts dependency. No API costs. No data leaving the machine.
+使用 Skill 自带的 Swift 源码和脚本在本机完成 OCR，不上传图片。实现仅支持 macOS；所有命令以当前 Skill 目录为基准。
 
-## Preflight
+## 安全与预检
 
-1. Confirm `uname -s` returns `Darwin`; otherwise do not use this Skill.
-2. Confirm `~/Applications/local-ocr/ocr_vision` and the referenced scripts exist and are executable.
-3. Run one supplied image as a smoke test before a batch. If Apple Vision returns `nilError` or another framework error, stop and use Codex native vision/PDF tooling; do not cache the empty result or continue the batch.
+1. 运行 `uname -s`，结果不是 `Darwin` 时停止使用本 Skill。
+2. 检查 `bin/ocr_vision` 是否存在且可执行；缺失时运行 `scripts/build.sh`。缺少 Homebrew 依赖时先说明并取得安装授权。
+3. 批处理前用用户提供的一张图片做烟雾测试。
+4. 如果 Codex 沙箱内出现 `nilError` 或 Vision framework 错误，先说明原因并申请普通主机权限重跑同一张图片；主机权限下仍失败才回退到 Codex 原生视觉或 PDF 工具。
+5. OCR 失败或输出为空时不要写入缓存，也不要继续批处理。
 
-## Quick Reference
+## 路径约定
 
-| Task | Tool | Command |
-|------|------|---------|
-| OCR single image | `ocr_vision` | `~/Applications/local-ocr/ocr_vision <img> [en\|zh\|ja\|cjk\|auto] [--raw\|--enhance]` |
-| Detect PDF type | `pdf_detect.sh` | `~/Applications/local-ocr/scripts/pdf_detect.sh <pdf>` |
-| PDF → Markdown | `pdf_to_md.sh` | `~/Applications/local-ocr/scripts/pdf_to_md.sh <pdf> [outdir] [--lang=zh] [--workers=N]` |
-| Clean OCR text | `txt_to_md.py` | `uv run python3 ~/Applications/local-ocr/scripts/txt_to_md.py <in> <out> [--lang=zh] [--config cfg.yaml]` |
-| Detect text language | `char_analysis.py` | `uv run python3 ~/Applications/local-ocr/scripts/char_analysis.py <text>` |
-| Batch manga lang detect | `manga-collection-manager` | Use `detect_language.py` in that skill |
-| Text cleanup (zh) | `opencc` | `opencc -c t2s` |
+默认目录：
 
-## When to Use What
+```text
+~/.codex/skills/user/local-ocr/
+├── bin/ocr_vision             # 本机编译产物，不纳入 Git
+├── scripts/                   # Swift 源码和工作脚本
+└── references/                # 安装、实现和故障说明
+```
 
-| Tool | Strengths | Use for |
-|------|-----------|---------|
-| **local-ocr** (this skill) | Local, free, private, fast, concurrent | Bulk text extraction: PDFs, document scans, manga batches, screenshots |
-| **Codex 原生视觉 / 项目视觉工具** | Semantic understanding, reasoning | Diagram interpretation, design critique, formula→LaTeX, error diagnosis, table extraction |
+如果设置了 `CODEX_HOME`，用 `$CODEX_HOME/skills/user/local-ocr` 代替 `~/.codex/skills/user/local-ocr`。
 
-**Rule of thumb**: If you just need private/offline text extraction on macOS → local-ocr. If you need to understand the image → Codex 原生视觉或项目视觉工具。
-
-For single images that need both text and structure: OCR first with `ocr_vision`, then let Codex interpret the extracted text together with the original image.
-
----
-
-## Task 1: Single Image OCR
-
-Extract text from a single image file (PNG, JPEG, etc.).
-
-### Basic Usage
+## 单张图片
 
 ```bash
-# English (default)
-~/Applications/local-ocr/ocr_vision image.png
-
-# Chinese
-~/Applications/local-ocr/ocr_vision image.png zh
-
-# Japanese
-~/Applications/local-ocr/ocr_vision image.png ja
-
-# Screenshot / digital image — skip preprocessing
-~/Applications/local-ocr/ocr_vision image.png --raw
+~/.codex/skills/user/local-ocr/bin/ocr_vision image.png en
+~/.codex/skills/user/local-ocr/bin/ocr_vision image.png zh
+~/.codex/skills/user/local-ocr/bin/ocr_vision image.png ja
+~/.codex/skills/user/local-ocr/bin/ocr_vision image.png cjk --raw
 ```
 
-### Language Modes
+- `--raw`：数字截图或原生图片，只缩放，不增强。
+- `--enhance`：扫描件，使用文档增强和轻微对比度。
+- `--full`：完整预处理，默认模式。
+- `cjk`：同时提供中日英识别提示，适合后续语言判断。
 
-Apple Vision's `recognitionLanguages` is a **priority hint**, not a hard filter. Choosing the right hint dramatically affects CJK accuracy.
+只需要文字时返回 OCR 文本；需要理解布局、图表或界面时，把原图交给 Codex 原生视觉，并把 OCR 结果作为辅助信息。
 
-| Mode | `recognitionLanguages` | Use Case |
-|------|------------------------|----------|
-| `en` | `["en-US", "zh-Hans"]` | English text with occasional Chinese (default) |
-| `zh` | `["zh-Hans", "zh-Hant", "en-US"]` | Chinese (simplified + traditional) |
-| `ja` | `["ja-JP", "en-US"]` | Japanese text |
-| `cjk` | `["zh-Hans", "zh-Hant", "ja-JP", "en-US"]` | **Language detection** — all CJK in one pass |
-| `auto` | `[]` (system preferred languages) | Vision auto-detection. **Not recommended for CJK** — tends to default to Latin script |
+## PDF
 
-### Preprocessing Modes
-
-| Mode | Pipeline | Best for |
-|------|----------|----------|
-| `--full` (default) | Scale → Document Enhancer → Contrast ×1.15 → Sharpen 0.3 | Scanned documents, photos |
-| `--enhance` | Scale → Document Enhancer → Contrast ×1.15 | Cleaner scans |
-| `--raw` | Scale only | Screenshots, digital images |
-
-All modes scale images to ≤2400px on the larger dimension (Lanczos resampling) before OCR. `--raw` skips enhancement filters but still scales for performance.
-
----
-
-## Task 2: Full PDF to Markdown
-
-Convert an entire PDF to clean markdown, handling both text-based and image-based (scanned) PDFs.
-
-### Pipeline Overview
-
-```
-PDF → pdf_detect.sh (classify)
-        ├─ text-based → pdftotext -layout → raw text
-        └─ image-based → pdftoppm (page images) → 10-way concurrent OCR → combined text
-      → txt_to_md.py (clean: remove headers/页码 → merge paragraphs → markdown)
-      → output.md
-```
-
-### Step 1: Quick PDF Check (before full conversion)
+先检测 PDF 类型：
 
 ```bash
-# Determine PDF type
-~/Applications/local-ocr/scripts/pdf_detect.sh "file.pdf"
-# exit 0 → text-based (pdftotext can extract)
-# exit 1 → image-based (needs page-by-page OCR)
-
-# For text PDFs: spot-check a page
-pdftotext -f 20 -l 20 "file.pdf" - | head -20
+~/.codex/skills/user/local-ocr/scripts/pdf_detect.sh file.pdf
 ```
 
-### Step 2: Full Conversion
+- 文本型 PDF：优先使用 PDF 插件或 `pdftotext`，不要逐页 OCR。
+- 扫描 PDF：运行本地转换脚本。
 
 ```bash
-# Basic: Chinese PDF (default language = zh)
-~/Applications/local-ocr/scripts/pdf_to_md.sh "file.pdf"
-
-# Specify output directory and language
-~/Applications/local-ocr/scripts/pdf_to_md.sh "file.pdf" /output/dir --lang=ja
-
-# Adjust concurrency (default: 10 workers)
-~/Applications/local-ocr/scripts/pdf_to_md.sh "file.pdf" --workers=5
+~/.codex/skills/user/local-ocr/scripts/pdf_to_md.sh file.pdf /output --lang=zh --workers=6
 ```
 
-**Note**: Default language is `zh` (Chinese). For English PDFs, always pass `--lang=en`.
+批量开始前检查页数、磁盘空间和输出目录。加密 PDF 或类型检测失败时停止并报告。
 
-### Step 3: Post-Processing with txt_to_md.py
-
-If the PDF is already extracted to raw text, you can run the post-processor directly:
+## 文字语言判断
 
 ```bash
-uv run python3 ~/Applications/local-ocr/scripts/txt_to_md.py raw_text.txt output.md --lang=zh
+uv run python3 ~/.codex/skills/user/local-ocr/scripts/char_analysis.py "这是中文"
+printf 'これは日本語です\n' | uv run python3 ~/.codex/skills/user/local-ocr/scripts/char_analysis.py
 ```
 
-**What it does**:
-1. **Auto-detect repeating headers** — finds lines that repeat across page boundaries and removes duplicates beyond the first occurrence. No configuration needed for common cases.
-2. **Remove standalone page numbers** — Arabic (1-9999) and Roman numerals (i, vii, xiv).
-3. **Merge broken lines into paragraphs** — uses the "short last line" heuristic. Computes the median line length for the document; lines significantly shorter (<75% of median) are paragraph-ending lines.
-4. **Apply markdown formatting** — chapter headings get `##`, all-caps sub-headings get `###`.
+判断顺序是：先看假名数量及其在假名加汉字中的占比，再判断中文，最后判断英文；不要用“汉字多于 20 个就是中文”的旧规则。
 
-**Optional config file** for document-specific tuning:
+漫画目录的批量语言检测使用 `manga-collection-manager` Skill，不在这里复制维护。
 
-```yaml
-# config.yaml — all fields optional
-lang: zh
+## 按需读取
 
-# Known section headers (first occurrence kept as title, subsequent stripped)
-section_headers:
-  - "引言"
-  - "参考文献"
-
-# Adjacent-line running header pairs to detect and remove
-running_header_pairs:
-  - left: "Book Title"
-    right_pattern: "Chapter Subtitle"
-
-# Common OCR error corrections (applied before all matching)
-ocr_corrections:
-  "common_misread": "correct_text"
-
-# Paragraph merging overrides
-merge:
-  short_line_threshold: 0.75
-  very_short_threshold: 20
-  orphan_merge_threshold: 10
-```
-
-```bash
-uv run python3 ~/Applications/local-ocr/scripts/txt_to_md.py in.txt out.md --config book.yaml
-```
-
-Disable auto header detection if it produces false positives:
-
-```bash
-uv run python3 ~/Applications/local-ocr/scripts/txt_to_md.py in.txt out.md --no-auto-detect-headers
-```
-
-### Performance
-
-| PDF Type | 300 pages | Bottleneck |
-|----------|-----------|------------|
-| Text-based | ~5 seconds | pdftotext is near-instant |
-| Image with OCR layer | ~5 seconds | Same (pdftotext extracts embedded text) |
-| Pure image (serial) | ~12 minutes | ~2.4s per page OCR |
-| Pure image (10-workers) | ~3 minutes | 10-way concurrency, ANE-bound |
-
-**Tested on**: Apple M5 Mac, macOS 25.5.0, 200 DPI. Your results will vary by chip generation, DPI, and print quality.
-
-### Minimizing LLM Calls
-
-The pipeline is entirely local. Only involve Codex for:
-- Targeted OCR cleanup on specific problematic sections
-- Complex structural formatting (tables, poetry)
-- Translation after extraction
-
-Use `opencc` for Chinese simplified↔traditional conversion — no LLM needed.
-
----
-
-## Task 3: Manga/Comic Language Detection
-
-Determine whether manga/doujin images contain Chinese, Japanese, or English text. Used to classify mixed-language collections.
-
-### Approach
-
-1. OCR images with `cjk` mode (all CJK languages in one pass, `--raw` since manga pages are digital)
-2. Analyze OCR output with Unicode character statistics
-3. Classify by heuristic: kana ratio vs CJK count
-
-### Single Image Check
-
-```bash
-# OCR a manga page with CJK mode
-~/Applications/local-ocr/ocr_vision page01.jpg cjk --raw
-
-# Detect language from the OCR output
-~/Applications/local-ocr/ocr_vision page01.jpg cjk --raw | uv run python3 ~/Applications/local-ocr/scripts/char_analysis.py
-```
-
-### The Algorithm
-
-```
-CJK >= 20              → Chinese (definitive — Japanese needs proportional kana)
-kana/(kana+CJK) > 30%  → Japanese (grammar particles present)
-CJK >= 5, low kana     → Chinese (lower confidence)
-Latin > 10, no CJK     → English
-otherwise              → unknown / low_text
-```
-
-**Why it works**: Japanese cannot be written without hiragana (grammar particles). A Chinese scanlation has dozens of CJK characters (translated dialog) with only a handful of kana (untranslated SFX like "あっ", "ドン"). Occasional "の" in Chinese scanlations won't trigger false Japanese — the threshold requires ≥3 kana AND >30% ratio.
-
-### Batch Pipeline
-
-For processing entire collections (hundreds of directories), use the `manga-collection-manager` skill:
-
-```bash
-cd ~/.agents/skills/manga-collection-manager
-uv run python3 scripts/detect_language.py --dryrun   # preview
-uv run python3 scripts/detect_language.py --workers 16  # full run
-```
-
-This script samples 5 images per directory, OCRs them concurrently, classifies language, and writes a CSV report. Uses image-level OCR caching for instant re-runs.
-
-The language detection primitives (`is_kana`, `is_cjk`, `analyze_text`, `detect_language`) are in `~/Applications/local-ocr/scripts/char_analysis.py` — a zero-dependency module shared by both skills.
-
----
-
-## ocr_vision Tool Reference
-
-### Why Our Own Tool (not Shortcuts)
-
-1. **Concurrency**: Shortcuts is single-task GUI app. Our Swift binary is a standalone process; 5-way concurrency gives 3.6× speedup.
-2. **Preprocessing pipeline**: Shortcuts applies undocumented preprocessing. We replicate it explicitly and lock `VNRecognizeTextRequestRevision3`.
-3. **Deterministic**: Behavior won't change with macOS updates.
-4. **Debuggable**: Source at `Sources/ocr_vision.swift`.
-
-### Preprocessing Pipeline
-
-```
-Raw Image
-  │
-  ├─→ CILanczosScaleTransform   → scale to ≤2400px (save compute)
-  ├─→ CIDocumentEnhancer        → Apple's scanned-document filter
-  ├─→ CIColorControls           → contrast ×1.15
-  ├─→ CISharpenLuminance        → light sharpen (edges)
-  │
-  ▼
-VNImageRequestHandler → VNRecognizeTextRequest (.accurate, Revision3)
-```
-
-Apple Vision does **no internal preprocessing** (confirmed by Apple engineer). All enhancement is explicit and controllable.
-
-### Complete Usage
-
-```bash
-# English (default)
-~/Applications/local-ocr/ocr_vision image.png
-
-# Chinese, full preprocessing
-~/Applications/local-ocr/ocr_vision image.png zh
-
-# Japanese
-~/Applications/local-ocr/ocr_vision image.png ja
-
-# CJK combined — for language detection
-~/Applications/local-ocr/ocr_vision image.png cjk --raw
-
-# Skip preprocessing (screenshots/digital images)
-~/Applications/local-ocr/ocr_vision image.png --raw
-
-# English, no preprocessing
-~/Applications/local-ocr/ocr_vision image.png en --raw
-```
-
-Position between language and option flags is flexible. Unknown arguments produce a stderr warning.
-
----
-
-## Installation / Build
-
-### Dependencies
-
-```bash
-brew install poppler ghostscript opencc
-```
-
-### Compile the OCR Tool
-
-```bash
-cd ~/Applications/local-ocr
-swiftc -O -o ocr_vision Sources/ocr_vision.swift
-```
-
-### Directory Structure
-
-```
-~/Applications/local-ocr/
-├── Sources/
-│   └── ocr_vision.swift         # Source code (readable, modifiable)
-├── ocr_vision                    # Compiled binary
-└── scripts/
-    ├── ocr_image.sh              # Single image OCR wrapper
-    ├── pdf_detect.sh             # PDF type detection
-    ├── pdf_to_md.sh              # Full PDF→Markdown pipeline
-    ├── txt_to_md.py              # Text→Markdown post-processor
-    └── char_analysis.py          # Language detection primitives
-```
-
----
-
-## Notes
-
-- **Temp files**: Always use a subfolder under `/tmp/` — `mktemp -d /tmp/Codex-ocr-XXXXXX` with `trap "rm -rf ..." EXIT`. Never dump files directly in `/tmp/`.
-- **Concurrency**: Default 10 OCR workers in `pdf_to_md.sh`. Override with `--workers=N`.
-- **Encrypted PDFs** cannot be processed — check with `pdfinfo` first.
-- **Revision lock**: `VNRecognizeTextRequestRevision3` is pinned; OS-upgrade behavior changes are prevented.
-- **Scale always applied**: Even in `--raw` mode, images >2400px are downscaled (Lanczos). This is by design for performance.
+- 首次安装、重新编译或排查依赖时，读取 [references/environment.md](references/environment.md)。
+- 调整图像预处理、语言提示、并发或文本清理时，读取 [references/implementation.md](references/implementation.md)。

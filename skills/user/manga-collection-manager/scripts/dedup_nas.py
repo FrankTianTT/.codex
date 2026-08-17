@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """去重脚本 — 默认预览；--execute 时把重复文件移入可恢复隔离目录。"""
+import argparse
+import json
 import os
 import re
 import shutil
-import sys
 from datetime import datetime
+from pathlib import Path
 
 BASE = "/Volumes/personal_folder/Private/Manga/单行本"
 
@@ -338,12 +340,26 @@ def list_files(author_dir):
     return sorted([f for f in os.listdir(d) if f.endswith('.zip') and not f.startswith('._')])
 
 
-def main():
-    dry_run = "--execute" not in sys.argv
-    quarantine_root = os.path.join(
-        BASE,
-        ".codex-dedup-quarantine",
-        datetime.now().strftime("%Y%m%d-%H%M%S"),
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--base", type=Path, default=Path(BASE), help="NAS 漫画根目录")
+    parser.add_argument("--execute", action="store_true", help="执行隔离；默认只预览")
+    parser.add_argument("--quarantine", type=Path, help="隔离目录；默认位于漫画根目录下")
+    return parser.parse_args()
+
+
+def main() -> int:
+    global BASE
+    args = parse_args()
+    BASE = str(args.base.expanduser().resolve())
+    if not os.path.isdir(BASE):
+        print(f"❌ 根目录不存在或卷未挂载: {BASE}")
+        return 2
+    dry_run = not args.execute
+    quarantine_root = str(
+        (args.quarantine or Path(BASE) / ".codex-dedup-quarantine" / datetime.now().strftime("%Y%m%d-%H%M%S"))
+        .expanduser()
+        .resolve()
     )
     if dry_run:
         print("=" * 70)
@@ -354,6 +370,8 @@ def main():
     total_delete = 0
     total_size = 0
     errors = []
+    planned_moves = []
+    missing_author_rules = 0
 
     for rule in RULES:
         author = rule["author"]
@@ -363,7 +381,7 @@ def main():
 
         author_dir = os.path.join(BASE, author)
         if not os.path.isdir(author_dir):
-            errors.append(f"❌ 目录不存在: {author}")
+            missing_author_rules += 1
             continue
 
         files = list_files(author)
@@ -409,16 +427,31 @@ def main():
                 total_delete += 1
                 print(f"   🗑️  隔离: {f} ({size_mb:.0f} MB)")
                 if not dry_run:
-                    try:
-                        relative = os.path.relpath(fpath, BASE)
-                        quarantine_path = os.path.join(quarantine_root, relative)
-                        os.makedirs(os.path.dirname(quarantine_path), exist_ok=True)
-                        if os.path.exists(quarantine_path):
-                            raise OSError(f"隔离目标已存在: {quarantine_path}")
-                        shutil.move(fpath, quarantine_path)
-                        print(f"       ✅ 已移入 {quarantine_path}")
-                    except OSError as e:
-                        errors.append(f"       ❌ 隔离失败: {e}")
+                    relative = os.path.relpath(fpath, BASE)
+                    planned_moves.append((fpath, os.path.join(quarantine_root, relative)))
+
+    if not dry_run and planned_moves:
+        os.makedirs(quarantine_root, exist_ok=False)
+        manifest = {
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "base": BASE,
+            "operations": [
+                {"source": source, "quarantine": destination}
+                for source, destination in planned_moves
+            ],
+        }
+        manifest_path = os.path.join(quarantine_root, "manifest.json")
+        with open(manifest_path, "x", encoding="utf-8") as handle:
+            json.dump(manifest, handle, ensure_ascii=False, indent=2)
+        for source, destination in planned_moves:
+            try:
+                os.makedirs(os.path.dirname(destination), exist_ok=True)
+                if os.path.exists(destination):
+                    raise OSError(f"隔离目标已存在: {destination}")
+                shutil.move(source, destination)
+                print(f"       ✅ 已移入 {destination}")
+            except OSError as exc:
+                errors.append(f"       ❌ 隔离失败: {exc}")
 
     print(f"\n{'=' * 70}")
     print(f"{'🔍 DRY RUN 汇总' if dry_run else '✅ 实际执行汇总'}")
@@ -426,12 +459,15 @@ def main():
     print(f"   可回收空间: {total_size/1024:.1f} GB")
     if not dry_run and total_delete:
         print(f"   恢复目录: {quarantine_root}")
+    if missing_author_rules:
+        print(f"   跳过未收录作者规则: {missing_author_rules}")
     if errors:
         print(f"   ⚠️ 问题: {len(errors)}")
         for e in errors[:10]:
             print(f"      {e}")
     print(f"{'=' * 70}")
+    return 1 if errors else 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

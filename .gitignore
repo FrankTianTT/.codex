@@ -16,3 +16,7 @@
 /skills/*
 !/skills/user/
 !/skills/user/**
+
+# 本机编译产物与解释器缓存不纳入配置仓库。
+/skills/user/local-ocr/bin/
+/skills/user/**/__pycache__/

@@ -1,0 +1,6 @@
+interface:
+  display_name: "macOS 本地 OCR"
+  short_description: "使用 Apple Vision 在本机提取扫描 PDF 和图片中的中英日文字"
+  default_prompt: "使用 $local-ocr 在 macOS 上本地提取这些图片或扫描 PDF 的文字，不上传原始文件。"
+policy:
+  allow_implicit_invocation: true

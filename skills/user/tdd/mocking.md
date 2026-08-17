@@ -1,59 +1,16 @@
-# When to Mock
+# 模拟与替身
 
-Mock at **system boundaries** only:
+优先只在系统边界使用替身：
 
-- External APIs (payment, email, etc.)
-- Databases (sometimes - prefer test DB)
-- Time/randomness
-- File system (sometimes)
+- 第三方 API、支付、邮件；
+- 时间和随机数；
+- 需要隔离的数据库、文件系统或消息队列。
 
-Don't mock:
+避免模拟自己的类和内部协作者。内部结构变化不应迫使行为测试重写。
 
-- Your own classes/modules
-- Internal collaborators
-- Anything you control
+## 设计原则
 
-## Designing for Mockability
-
-At system boundaries, design interfaces that are easy to mock:
-
-**1. Use dependency injection**
-
-Pass external dependencies in rather than creating them internally:
-
-```typescript
-// Easy to mock
-function processPayment(order, paymentClient) {
-  return paymentClient.charge(order.total);
-}
-
-// Hard to mock
-function processPayment(order) {
-  const client = new StripeClient(process.env.STRIPE_KEY);
-  return client.charge(order.total);
-}
-```
-
-**2. Prefer SDK-style interfaces over generic fetchers**
-
-Create specific functions for each external operation instead of one generic function with conditional logic:
-
-```typescript
-// GOOD: Each function is independently mockable
-const api = {
-  getUser: (id) => fetch(`/users/${id}`),
-  getOrders: (userId) => fetch(`/users/${userId}/orders`),
-  createOrder: (data) => fetch('/orders', { method: 'POST', body: data }),
-};
-
-// BAD: Mocking requires conditional logic inside the mock
-const api = {
-  fetch: (endpoint, options) => fetch(endpoint, options),
-};
-```
-
-The SDK approach means:
-- Each mock returns one specific shape
-- No conditional logic in test setup
-- Easier to see which endpoints a test exercises
-- Type safety per endpoint
+- 通过依赖注入传入外部依赖，不在业务函数内部硬编码客户端创建。
+- 为具体外部操作建立窄接口，例如 `get_user`、`create_order`，不要让所有行为都经过需要复杂条件判断的通用 `fetch` mock。
+- 只断言业务所需的边界交互；调用次数和顺序不是契约时不要锁死。
+- 有廉价、稳定的测试实现时，优先 fake 或本地测试服务，而不是大量脆弱 mock。

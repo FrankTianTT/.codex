@@ -17,7 +17,13 @@ description: OpenCLI 的轻量路由说明。当用户明确指定网站或平�
 
 ## 最小发现流程
 
-1. 用 `opencli list -f json` 获取实时 registry，但只通过 `jq` 或其他过滤方式读取目标站点，禁止把完整 registry 灌入上下文。
+1. 用定向过滤读取实时 registry，禁止把完整 registry 灌入上下文：
+
+   ```bash
+   opencli list -f json | jq '[.[] | select(.site == "<site>")]'
+   ```
+
+   同时检查 `access` 和 `strategy`；`access: write` 必须按写操作处理，即使命令名称看起来像查询。
 2. 用 `opencli <site> --help` 和 `opencli <site> <command> --help` 确认实时参数。
 3. 只有 `COOKIE`、`INTERCEPT`、`UI` 或 `opencli browser` 路径才需要先运行 `opencli doctor`；`PUBLIC` 和 `LOCAL` adapter 不需要浏览器桥接。
 4. 所有浏览器命令都使用当前语法：`opencli browser <session> <command>`。

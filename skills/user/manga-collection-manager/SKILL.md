@@ -25,7 +25,7 @@ description: |
 - 执行前确认来源卷和目标卷都已挂载；路径缺失时立即停止，禁止自动创建卷根目录。
 - 目标同名或截断后重名时停止并报告，不覆盖现有文件。
 - 删除源文件前必须完成压缩包 CRC/条目验证，或跨卷复制后的大小、SHA-256 与 ZIP 完整性验证。
-- 先保存操作清单和结果日志；高风险批处理优先在临时副本上做小样本验证。
+- 先保存操作清单和结果日志；高风险批处理先在临时副本上做小样本验证。
 
 ## 馆藏标准
 
@@ -56,7 +56,7 @@ find /path/to/dir -type f \( -name '*.pdf' -o -name '*.gif' -o -name '*.webp' \
 
 ### 压缩约定
 
-每个叶子目录（直接含图片）压缩为同名 `.zip`，删除原目录。exFAT 上几千个小文件的簇大小浪费严重，压缩后大幅节省空间。
+每个真正的叶子目录压缩为同名 `.zip`，验证 CRC、条目名和文件大小后再删除原目录。目录内只要存在非图片文件或符号链接，脚本就拒绝执行并要求先人工检查。
 
 ```bash
 uv run python3 scripts/compress.py             # 默认预览
@@ -81,7 +81,7 @@ uv run python3 scripts/compress.py --execute   # 明确确认后执行
 [白杨汉化组] [風的工房] [篆儀通文書坊漢化] [4K掃圖組] [CE家族社]
 ```
 
-**F 级（机翻）→ 立即删除**
+**F 级（机翻）→ 列为删除候选**
 ```
 [MAHIRO机翻] [iAtt机翻] [机翻] [機翻]
 ```
@@ -91,7 +91,7 @@ uv run python3 scripts/compress.py --execute   # 明确确认后执行
 [英訳] [English]
 ```
 
-**日文 → 删除**
+**日文 → 列为删除候选**
 ```
 [日原版] [DLsite] [FANZA] 及所有无括号标签的文件夹
 ```
@@ -101,8 +101,8 @@ uv run python3 scripts/compress.py --execute   # 明确确认后执行
 目录名分类覆盖 ~95% 场景。需要验证歧义时，使用 `local-ocr` skill 的 CJK 语言检测：
 
 ```bash
-uv run python3 scripts/detect_language.py --dryrun   # 预览采样
-uv run python3 scripts/detect_language.py --workers 16   # 全量检测
+uv run python3 scripts/detect_language.py --dryrun               # 预览采样
+uv run python3 scripts/detect_language.py --base /path --workers 16  # 全量检测
 ```
 
 核心算法：先检查假名数量及其在 CJK+假名中的占比；假名信号不足时才按汉字数量判断中文。详细算法见 `scripts/detect_language.py` docstring。
@@ -132,8 +132,8 @@ uv run python3 scripts/detect_language.py --workers 16   # 全量检测
 批量去重使用脚本：
 
 ```bash
-uv run python3 scripts/dedup_nas.py              # 预览
-uv run python3 scripts/dedup_nas.py --execute    # 执行
+uv run python3 scripts/dedup_nas.py                         # 预览
+uv run python3 scripts/dedup_nas.py --base /path --execute  # 执行并写隔离清单
 ```
 
 ## 重组规则
@@ -170,7 +170,7 @@ PIXIV/FANBOX 日期子目录和 CG 集不适用语言分类。
 
 1. **建清单** — 扫描所有文件夹，分类语言，标记重复
 2. **预览** — DRY RUN，展示删除/重组计划
-3. **删除** — 非中文、非图片、机翻、重复
+3. **隔离/清理** — 经确认后处理非中文、非图片、机翻和重复项
 4. **重组** — 展平分类层级、应用 150 页规则、系列检测
 5. **压缩** — leaf dir → zip
 6. **清理** — 删除空目录、`._*` 文件
@@ -190,7 +190,7 @@ PIXIV/FANBOX 日期子目录和 CG 集不适用语言分类。
 ```bash
 # 语言检测
 uv run python3 scripts/detect_language.py --dryrun
-uv run python3 scripts/detect_language.py --workers 16
+uv run python3 scripts/detect_language.py --base /path --workers 16
 
 # 压缩叶子目录
 uv run python3 scripts/compress.py
@@ -198,13 +198,13 @@ uv run python3 scripts/compress.py --execute
 
 # 去重
 uv run python3 scripts/dedup_nas.py
-uv run python3 scripts/dedup_nas.py --execute
+uv run python3 scripts/dedup_nas.py --base /path --execute
 
 # ibm5100 解压后迁移到 NAS
 uv run python3 scripts/migrate_to_nas.py              # 默认预览
 uv run python3 scripts/migrate_to_nas.py --execute    # 明确确认后执行
 
 # AList 下载
-uv run --with requests python3 scripts/alist_download.py
-uv run --with requests python3 scripts/alist_download.py --execute
+uv run --with requests python3 scripts/alist_download.py --nas /path/to/nas
+uv run --with requests python3 scripts/alist_download.py --nas /path/to/nas --execute
 ```

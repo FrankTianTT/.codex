@@ -1,4 +1,6 @@
 interface:
   display_name: "yt-dlp 媒体下载"
   short_description: "检查并下载公开视频、音频、字幕或播放列表到指定目录"
-  default_prompt: "Use $yt-dlp-download to inspect this media URL and safely download the requested video, audio, subtitles, or playlist."
+  default_prompt: "使用 $yt-dlp-download 检查这个媒体 URL，并安全下载用户要求的视频、音频、字幕或播放列表。"
+policy:
+  allow_implicit_invocation: true

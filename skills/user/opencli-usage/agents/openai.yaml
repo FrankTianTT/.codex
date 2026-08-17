@@ -1,0 +1,6 @@
+interface:
+  display_name: "OpenCLI 路由"
+  short_description: "在站点 adapter、Codex 网页搜索和浏览器之间选择可靠路径"
+  default_prompt: "使用 $opencli-usage 判断这个站点任务是否应主动调用 OpenCLI，并先检查实时 registry 和访问类型。"
+policy:
+  allow_implicit_invocation: true

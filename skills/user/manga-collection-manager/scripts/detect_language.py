@@ -13,9 +13,9 @@
   uv run python3 detect_language.py --workers 16 # 自定义并发
 """
 
+import argparse
 import subprocess
 import os
-import sys
 import csv
 import time
 import json
@@ -24,7 +24,8 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import Counter
 
-OCR_TOOL = os.path.expanduser("~/Applications/local-ocr/ocr_vision")
+SKILLS_ROOT = Path(__file__).resolve().parents[2]
+OCR_TOOL = SKILLS_ROOT / "local-ocr" / "bin" / "ocr_vision"
 BASE_DIR = Path("/Volumes/ACASIS/extract")
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 OUTPUT_CSV = BASE_DIR / "language_report.csv"
@@ -73,7 +74,7 @@ def set_cached_ocr(img_path: str, text: str):
 # ── 字符分析 (复用 local-ocr 的 char_analysis 模块) ─────────────────────
 
 import sys as _sys
-_sys.path.insert(0, os.path.expanduser("~/Applications/local-ocr/scripts"))
+_sys.path.insert(0, str(SKILLS_ROOT / "local-ocr" / "scripts"))
 from char_analysis import is_kana, is_cjk, is_latin, analyze_text
 
 
@@ -106,7 +107,7 @@ def ocr_image(image_path: str) -> str:
 
     try:
         result = subprocess.run(
-            [OCR_TOOL, image_path, "cjk", "--raw"],
+            [str(OCR_TOOL), image_path, "cjk", "--raw"],
             capture_output=True, text=True, timeout=15,
         )
         if result.returncode != 0:
@@ -232,28 +233,36 @@ def write_csv(results: list[dict], path: Path):
 
 # ── 主流程 ─────────────────────────────────────────────────────────────────
 
-def main():
-    workers = 16
-    dryrun = False
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--base", type=Path, default=BASE_DIR, help="待检测漫画根目录")
+    parser.add_argument("--output", type=Path, help="CSV 报告路径；默认写入根目录")
+    parser.add_argument("--cache", type=Path, help="OCR 缓存路径；默认写入根目录")
+    parser.add_argument("--workers", type=int, default=16, help="OCR 并发数")
+    parser.add_argument("--dryrun", action="store_true", help="只列出采样计划，不执行 OCR 或写文件")
+    return parser.parse_args()
 
-    args = sys.argv[1:]
-    i = 0
-    while i < len(args):
-        if args[i] == "--workers" and i + 1 < len(args):
-            workers = int(args[i + 1])
-            i += 2
-        elif args[i] == "--dryrun":
-            dryrun = True
-            i += 1
-        else:
-            print(f"未知参数: {args[i]}")
-            sys.exit(1)
+
+def main() -> int:
+    global BASE_DIR, OUTPUT_CSV, CACHE_FILE
+    args = parse_args()
+    BASE_DIR = args.base.expanduser().resolve()
+    OUTPUT_CSV = (args.output or BASE_DIR / "language_report.csv").expanduser().resolve()
+    CACHE_FILE = (args.cache or BASE_DIR / ".ocr_cache.json").expanduser().resolve()
+    workers = args.workers
+
+    if not BASE_DIR.is_dir():
+        print(f"❌ 根目录不存在或卷未挂载: {BASE_DIR}")
+        return 2
+    if workers < 1:
+        print("❌ --workers 必须大于 0")
+        return 2
 
     print(f"🔍 扫描 {BASE_DIR} 中的叶子目录...")
     leaf_dirs = find_leaf_dirs(BASE_DIR)
     print(f"   找到 {len(leaf_dirs)} 个包含图片的目录")
 
-    if dryrun:
+    if args.dryrun:
         print(f"\n📋 预览模式 — 每目录采样 {SAMPLES_PER_DIR} 张:\n")
         for d in leaf_dirs[:10]:
             s = sample_images(d, n=SAMPLES_PER_DIR)
@@ -261,7 +270,11 @@ def main():
             print(f"    采样: {[img.name for img in s]}")
         if len(leaf_dirs) > 10:
             print(f"  ... 还有 {len(leaf_dirs) - 10} 个目录")
-        return
+        return 0
+
+    if not OCR_TOOL.is_file() or not os.access(OCR_TOOL, os.X_OK):
+        print(f"❌ 本地 OCR 工具不存在或不可执行: {OCR_TOOL}")
+        return 2
 
     # 加载图片级缓存
     global _ocr_cache
@@ -320,7 +333,8 @@ def main():
             "error": "错误", "no_images": "无图片",
         }
         print(f"  {label.get(lang, lang):12s} ({lang:10s}): {count:4d} ({pct:.1f}%)")
+    return 1 if lang_counts.get("error") else 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
